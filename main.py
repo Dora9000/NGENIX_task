@@ -1,12 +1,11 @@
-import xml.etree.ElementTree as ET
-import shutil
-import pathlib
+import csv
 import os
+import pathlib
 import random
+import shutil
 from string import ascii_letters
 from threading import Thread, Lock
-import time
-import csv
+import xml.etree.ElementTree as ET
 
 
 class Creator(object):
@@ -35,7 +34,7 @@ class Creator(object):
                 self.make_xml().write(self.path_to_result / 'tmp' / "Result_{0}.xml".format(i))
             shutil.make_archive(self.path_to_result / "Result_{0}".format(j), 'zip', self.path_to_result / 'tmp')
             for f in os.listdir(self.path_to_result / 'tmp'):
-                os.remove(self.path_to_result / 'tmp' / f)
+                os.remove(self.path_to_result / 'tmp' / f)    
         os.rmdir(self.path_to_result / 'tmp')
         return self.path_to_result
 
@@ -62,6 +61,7 @@ class Parser(object):
             if child.tag == "objects":
                 for step_child in child:
                     objects.append(step_child.attrib.get('name'))
+                    
             if child.attrib.get('name') == "id":
                 id_ = child.attrib.get('value')
             if child.attrib.get('name') == "level":
@@ -89,23 +89,20 @@ class Parser(object):
                 files[0].release()
                 self.parse_file(filename, data)
 
-    def csv_writer(self, data, path):
-        with open(path, "w", newline='') as csv_file:
-            writer = csv.writer(csv_file, delimiter=',')
-            for line in data:
-                writer.writerow(line)
-
     def write(self, data, worker_counter):
         output_file1 = open(self.file1, 'w', newline='')
         writer1 = csv.writer(output_file1, delimiter=',')
         output_file2 = open(self.file2, 'w', newline='')
         writer2 = csv.writer(output_file2, delimiter=',')
+        
         def write_data1(lines):
             for line in lines:
                 writer1.writerow(line)
+                
         def write_data2(lines):
             for line in lines:
                 writer2.writerow(line)
+                
         while True:
             data[0].acquire()
             write_data1(data[1])
@@ -113,11 +110,8 @@ class Parser(object):
             data[1].clear()
             data[2].clear()
             data[0].release()
-            time.sleep(0.01)
-
             if worker_counter[0] == 0:
                 break
-
         output_file1.flush()
         output_file2.flush()
         output_file1.close()
@@ -125,21 +119,23 @@ class Parser(object):
 
     def get_files(self, zip_dir, extract_dir):
         answer = []
-        for zip in os.listdir(zip_dir):
-            shutil.unpack_archive(zip_dir / zip, extract_dir / str(zip)[:-len('.zip')])
-            for f in os.listdir(extract_dir / str(zip)[:-len('.zip')]):
-                answer.append(extract_dir / str(zip)[:-len('.zip')] / f)
+        for arch in os.listdir(zip_dir):
+            shutil.unpack_archive(zip_dir / arch, extract_dir / str(arch)[:-len('.zip')])
+            for f in os.listdir(extract_dir / str(arch)[:-len('.zip')]):
+                answer.append(extract_dir / str(arch)[:-len('.zip')] / f)
         return answer
 
     def parse(self):
         if not os.path.exists(self.extract_dir):
             os.makedirs(self.extract_dir)
+            
         files = (Lock(), self.get_files(zip_dir=self.data_path, extract_dir=self.extract_dir))
         data = (Lock(), [], [])
         worker_counter = [self.N]
         threads = [Thread(target=self.work, args=(data, files, worker_counter)) for index in range(self.N)]
         for i in range(self.N):
             threads[i].start()
+            
         writer = Thread(target=self.write, args=(data, worker_counter))
         writer.start()
         for i in range(self.N):
@@ -147,9 +143,24 @@ class Parser(object):
         writer.join()
 
 
+def delete_dir(path):
+    if os.path.exists(path):
+        for root, dirs, files in os.walk(path, topdown=False):
+            for name in files:
+                os.remove(os.path.join(root, name))
+            for name in dirs:
+                os.rmdir(os.path.join(root, name))
+        os.rmdir(path)
+
+
 if __name__ == '__main__':
-    path = pathlib.Path(__file__).parent / 'XML'
-    a = Creator(path=path, num_arch=50, num_files=100)
+    data_path = pathlib.Path(__file__).parent / 'XML'
+    extract_dir = pathlib.Path(__file__).parent / 'extracted_XML'
+    a = Creator(path=data_path, num_arch=50, num_files=100)
     a.get_result()
-    b = Parser(data_path=path, extract_dir=pathlib.Path(__file__).parent / 'extracted_XML')
+
+    b = Parser(data_path=data_path, extract_dir=extract_dir)
     b.parse()
+
+    delete_dir(data_path)
+    delete_dir(extract_dir)
