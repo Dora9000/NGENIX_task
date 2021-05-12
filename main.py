@@ -109,9 +109,11 @@ class Parser(object):
             write_data2(data[2])
             data[1].clear()
             data[2].clear()
-            data[0].release()
             if worker_counter[0] == 0:
+                data[0].release()
                 break
+            data[0].release()
+
         output_file1.flush()
         output_file2.flush()
         output_file1.close()
